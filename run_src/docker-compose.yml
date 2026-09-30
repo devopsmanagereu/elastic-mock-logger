@@ -1,0 +1,20 @@
+services:
+  setup:
+    image: ${ELASTIC_MOCK_LOGGER_IMAGE:-devopsmanagereu/elastic-mock-logger:latest}
+    env_file:
+      - .env
+    command: ["--setup-only"]
+    restart: "no"
+
+  statistics:
+    image: ${ELASTIC_MOCK_LOGGER_IMAGE:-devopsmanagereu/elastic-mock-logger:latest}
+    env_file:
+      - .env
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    restart: "no"
+
+# ELASTIC_HOST in .env must include http:// or https:// and be reachable from
+# these containers. For a service on the Docker host, use
+# https://host.docker.internal on Docker Desktop.

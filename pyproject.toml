@@ -1,0 +1,35 @@
+[project]
+name = "elastic-mock-logger"
+version = "1.1.0"
+description = "Elastic mock logger"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dotenv>=0.9.9",
+    "elasticsearch9>=9.5.1",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.0",
+]
+
+[project.scripts]
+elastic-mock-logger = "elastic_mock_logger:main"
+
+[tool.uv]
+package = false
+default-groups = ["test"]
+
+[tool.elastic-mock-logger]
+image_repository = "devopsmanagereu"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "build_src"]
+testpaths = ["tests"]
+markers = [
+]

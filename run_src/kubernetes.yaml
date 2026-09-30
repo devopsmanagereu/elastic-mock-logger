@@ -1,0 +1,45 @@
+# Create the elastic-mock-logger-secrets Secret with ELASTIC_USERNAME and
+# ELASTIC_PASSWORD before applying this manifest. Mount a CA certificate and set
+# CA_CERTS as well when the Elasticsearch endpoint uses a private CA.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elastic-mock-logger-config
+data:
+  ELASTIC_HOST: https://elasticsearch.default.svc.cluster.local
+  ES_PORT: "9200"
+  KIBANA_HOST: https://kibana.default.svc.cluster.local
+  KIBANA_PORT: "5601"
+  DESTINATION_TYPE: data_stream
+  DESTINATION_NAME: logs-random
+  FLUSH_INTERVAL: "3"
+  RANDOM_WORDS_COUNT: "8"
+  LOG_ENTRIES: |
+    [
+      {"name":"application","events_per_minute":60,"random_message":true},
+      {"name":"audit","events_per_minute":3,"message":"test audit event"}
+    ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elastic-mock-logger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elastic-mock-logger
+  template:
+    metadata:
+      labels:
+        app: elastic-mock-logger
+    spec:
+      containers:
+        - name: logger
+          image: devopsmanagereu/elastic-mock-logger:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: elastic-mock-logger-config
+            - secretRef:
+                name: elastic-mock-logger-secrets

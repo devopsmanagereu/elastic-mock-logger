@@ -1,0 +1,12 @@
+# Do not send tests, local configuration, or development artefacts to Docker.
+tests/
+.env
+src/.env
+.git/
+.idea/
+.venv/
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/

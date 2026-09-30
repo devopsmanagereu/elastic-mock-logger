@@ -1,0 +1,9 @@
+# no CA
+docker run --rm --env-file ./run_src/.env devopsmanagereu/elastic-mock-logger:latest --setup-only
+docker run --rm --env-file ./run_src/.env devopsmanagereu/elastic-mock-logger:latest
+
+# with CA
+docker run --rm --env-file ./run_src/.env -v ./ca.crt:/var/run/ca.crt \
+  devopsmanagereu/elastic-mock-logger:latest --setup-only
+docker run --rm --env-file ./run_src/.env -v ./ca.crt:/var/run/ca.crt \
+  devopsmanagereu/elastic-mock-logger:latest
