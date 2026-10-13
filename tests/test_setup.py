@@ -25,6 +25,7 @@ class RecordingIndices:
         self.template_calls = []
         self.create_calls = []
         self.data_stream_calls = []
+        self.data_stream_settings_calls = []
         self.exists_alias_calls = []
         self.get_alias_calls = []
 
@@ -39,6 +40,9 @@ class RecordingIndices:
 
     def create_data_stream(self, **kwargs):
         self.data_stream_calls.append(kwargs)
+
+    def put_data_stream_settings(self, **kwargs):
+        self.data_stream_settings_calls.append(kwargs)
 
     def exists_alias(self, **kwargs):
         self.exists_alias_calls.append(kwargs)
@@ -66,6 +70,7 @@ def configuration(destination_type: str) -> Configuration:
         kibana_port=5601,
         destination_type=destination_type,
         destination_name="logs-test",
+        data_stream_namespace="default" if destination_type == "data_stream" else None,
         flush_interval=3,
         random_words_count=4,
         log_entries=(LogEntry("application", 60, "message", False),),
@@ -129,10 +134,33 @@ def test_data_stream_setup_uses_a_matching_data_stream_template():
 
     prepare_destination(client, configuration("data_stream"))
 
-    assert client.ilm.calls == []
-    assert client.indices.template_calls[0]["index_patterns"] == ["logs-test"]
+    assert client.ilm.calls == [{
+        "name": "logs-test",
+        "policy": {"phases": {"hot": {"actions": {"rollover": {"max_age": "30d"}}}}},
+    }]
+    assert client.indices.template_calls[0]["index_patterns"] == ["logs-test-*"]
+    assert client.indices.template_calls[0]["priority"] == 501
     assert client.indices.template_calls[0]["data_stream"] == {}
-    assert client.indices.data_stream_calls == [{"name": "logs-test"}]
+    assert client.indices.template_calls[0]["template"]["settings"] == {
+        "index.lifecycle.name": "logs-test"
+    }
+    assert client.indices.data_stream_calls == [{"name": "logs-test-default"}]
+    assert client.indices.data_stream_settings_calls == [{
+        "name": "logs-test-default",
+        "settings": {"index.lifecycle.name": "logs-test"},
+    }]
+
+
+def test_data_stream_setup_applies_ilm_to_an_existing_stream():
+    client = RecordingClient(exists=True)
+
+    prepare_destination(client, configuration("data_stream"))
+
+    assert client.indices.data_stream_calls == []
+    assert client.indices.data_stream_settings_calls == [{
+        "name": "logs-test-default",
+        "settings": {"index.lifecycle.name": "logs-test"},
+    }]
 
 
 class RecordingKibana:
@@ -178,3 +206,12 @@ def test_kibana_setup_creates_a_named_data_view_that_targets_the_alias():
             },
         ),
     ]
+
+
+def test_kibana_setup_targets_the_namespace_qualified_data_stream():
+    client = RecordingKibana()
+
+    prepare_kibana_data_view(client, configuration("data_stream"))
+
+    assert client.calls[0][2]["data_view"]["name"] == "logs-test"
+    assert client.calls[0][2]["data_view"]["title"] == "logs-test-default"

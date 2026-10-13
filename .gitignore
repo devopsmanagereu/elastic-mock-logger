@@ -10,3 +10,5 @@ wheels/
 .venv
 tests/e2e_tests/.created_resources.json
 tests/test_report/
+
+.idea/

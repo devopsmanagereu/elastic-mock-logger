@@ -12,6 +12,8 @@ data:
   KIBANA_PORT: "5601"
   DESTINATION_TYPE: data_stream
   DESTINATION_NAME: logs-random
+  DATA_STREAM_NAMESPACE: default
+  ILM_POLICY: '{"policy":{"phases":{"hot":{"min_age":"0ms","actions":{"rollover":{"max_age":"3m","max_primary_shard_size":"1mb"}}},"delete":{"min_age":"10m","actions":{"delete":{"delete_searchable_snapshot":true}}}}}}'
   FLUSH_INTERVAL: "3"
   RANDOM_WORDS_COUNT: "8"
   LOG_ENTRIES: |

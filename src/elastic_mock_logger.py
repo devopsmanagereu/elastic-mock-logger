@@ -58,6 +58,8 @@ def create_document(
     random_words_count: int,
     random_choice: Callable[[Sequence[str]], str],
     now: Callable[[], datetime],
+    *,
+    data_stream: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Create an ECS-compatible document at the moment it is generated."""
     message = (
@@ -65,11 +67,14 @@ def create_document(
         if entry.random_message
         else entry.message
     )
-    return {
+    document = {
         "@timestamp": utc_timestamp(now()),
         "message": message,
         "event": {"dataset": entry.name},
     }
+    if data_stream is not None:
+        document["data_stream"] = dict(data_stream)
+    return document
 
 
 class EventScheduler:
@@ -83,11 +88,13 @@ class EventScheduler:
         monotonic: Callable[[], float] = time.monotonic,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         random_choice: Callable[[Sequence[str]], str] = random.choice,
+        data_stream: Mapping[str, str] | None = None,
     ) -> None:
         self._monotonic = monotonic
         self._now = now
         self._random_choice = random_choice
         self._random_words_count = random_words_count
+        self._data_stream = dict(data_stream) if data_stream is not None else None
         self._started_at = monotonic()
         self._scheduled_entries = [
             _ScheduledEntry(
@@ -112,6 +119,7 @@ class EventScheduler:
                         self._random_words_count,
                         self._random_choice,
                         self._now,
+                        data_stream=self._data_stream,
                     )
                 )
                 scheduled_entry.emitted_events += 1
@@ -182,6 +190,7 @@ def run_generator(
         monotonic=monotonic,
         now=now,
         random_choice=random_choice,
+        data_stream=configuration.event_data_stream,
     )
     buffered_documents: list[dict[str, Any]] = []
     next_flush_at = monotonic() + configuration.flush_interval
@@ -191,7 +200,7 @@ def run_generator(
     )
     LOGGER.info(
         "Starting mock-log generation for %s with rates: %s",
-        configuration.destination_name,
+        configuration.write_destination,
         entry_rates,
     )
 
@@ -201,11 +210,11 @@ def run_generator(
             current_time = monotonic()
             if current_time >= next_flush_at:
                 if buffered_documents:
-                    write_bulk(client, configuration.destination_name, buffered_documents)
+                    write_bulk(client, configuration.write_destination, buffered_documents)
                     LOGGER.info(
                         "Wrote %d generated events to %s",
                         len(buffered_documents),
-                        configuration.destination_name,
+                        configuration.write_destination,
                     )
                     buffered_documents.clear()
                 while next_flush_at <= current_time:
@@ -219,7 +228,7 @@ def run_generator(
             sleep(max(0.001, delay))
     except KeyboardInterrupt:
         if buffered_documents:
-            write_bulk(client, configuration.destination_name, buffered_documents)
+            write_bulk(client, configuration.write_destination, buffered_documents)
             LOGGER.info(
                 "Wrote %d buffered events before stopping", len(buffered_documents)
             )

@@ -54,6 +54,7 @@ def test_load_configuration_parses_fixed_and_random_messages(tmp_path, monkeypat
     assert configuration.log_entries[0].message is None
     assert configuration.log_entries[1].events_per_minute == 2.5
     assert configuration.log_entries[1].message == "signed in"
+    assert configuration.data_stream_namespace is None
 
 
 def test_load_configuration_parses_comma_separated_elasticsearch_hosts(
@@ -102,6 +103,60 @@ def test_index_destination_requires_an_ilm_policy(tmp_path):
     write_environment(environment_file, '[{"name":"application","events_per_minute":1,"message":"x"}]')
     environment_file.write_text(
         environment_file.read_text().replace(
+            "ILM_POLICY='{\"phases\":{\"hot\":{\"actions\":{\"rollover\":{\"max_age\":\"30d\"}}}}}'\n",
+            "",
+        )
+    )
+
+    with pytest.raises(ConfigurationError, match="ILM_POLICY"):
+        load_configuration(environment_file)
+
+
+def test_data_stream_destination_requires_a_namespace_and_uses_it_in_its_name(tmp_path):
+    environment_file = tmp_path / ".env"
+    write_environment(
+        environment_file, '[{"name":"application","events_per_minute":1,"message":"x"}]'
+    )
+    environment_file.write_text(
+        environment_file.read_text()
+        .replace("DESTINATION_TYPE=index", "DESTINATION_TYPE=data_stream")
+        .replace("DESTINATION_NAME=logs-test", "DESTINATION_NAME=logs-test\nDATA_STREAM_NAMESPACE=default")
+    )
+
+    configuration = load_configuration(environment_file)
+
+    assert configuration.data_stream_name == "logs-test-default"
+    assert configuration.write_destination == "logs-test-default"
+    assert configuration.event_data_stream == {
+        "type": "logs",
+        "namespace": "default",
+        "dataset": "logs-test",
+    }
+
+
+def test_data_stream_destination_rejects_a_missing_namespace(tmp_path):
+    environment_file = tmp_path / ".env"
+    write_environment(
+        environment_file, '[{"name":"application","events_per_minute":1,"message":"x"}]'
+    )
+    environment_file.write_text(
+        environment_file.read_text().replace("DESTINATION_TYPE=index", "DESTINATION_TYPE=data_stream")
+    )
+
+    with pytest.raises(ConfigurationError, match="DATA_STREAM_NAMESPACE"):
+        load_configuration(environment_file)
+
+
+def test_data_stream_destination_requires_an_ilm_policy(tmp_path):
+    environment_file = tmp_path / ".env"
+    write_environment(
+        environment_file, '[{"name":"application","events_per_minute":1,"message":"x"}]'
+    )
+    environment_file.write_text(
+        environment_file.read_text()
+        .replace("DESTINATION_TYPE=index", "DESTINATION_TYPE=data_stream")
+        .replace("DESTINATION_NAME=logs-test", "DESTINATION_NAME=logs-test\nDATA_STREAM_NAMESPACE=default")
+        .replace(
             "ILM_POLICY='{\"phases\":{\"hot\":{\"actions\":{\"rollover\":{\"max_age\":\"30d\"}}}}}'\n",
             "",
         )

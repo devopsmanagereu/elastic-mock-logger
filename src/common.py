@@ -56,6 +56,7 @@ class Configuration:
     kibana_port: int
     destination_type: str
     destination_name: str
+    data_stream_namespace: str | None
     flush_interval: float
     random_words_count: int
     log_entries: tuple[LogEntry, ...]
@@ -70,6 +71,37 @@ class Configuration:
     def kibana_url(self) -> str:
         """Return the configured Kibana endpoint."""
         return f"{self.kibana_host}:{self.kibana_port}"
+
+    @property
+    def data_stream_name(self) -> str | None:
+        """Return the namespace-qualified data-stream name when configured."""
+        if self.destination_type != "data_stream":
+            return None
+        if self.data_stream_namespace is None:
+            raise ConfigurationError(
+                "DATA_STREAM_NAMESPACE is required for a data-stream destination."
+            )
+        return f"{self.destination_name}-{self.data_stream_namespace}"
+
+    @property
+    def write_destination(self) -> str:
+        """Return the alias or namespace-qualified data stream used by Bulk API."""
+        return self.data_stream_name or self.destination_name
+
+    @property
+    def event_data_stream(self) -> Mapping[str, str] | None:
+        """Return the ECS data-stream fields required on data-stream events."""
+        if self.destination_type != "data_stream":
+            return None
+        if self.data_stream_namespace is None:
+            raise ConfigurationError(
+                "DATA_STREAM_NAMESPACE is required for a data-stream destination."
+            )
+        return {
+            "type": "logs",
+            "namespace": self.data_stream_namespace,
+            "dataset": self.destination_name,
+        }
 
 
 def _default_dotenv_path() -> Path | None:
@@ -193,6 +225,18 @@ def _parse_destination_name(values: Mapping[str, str]) -> str:
     return name
 
 
+def _parse_data_stream_namespace(
+    values: Mapping[str, str], destination_type: str
+) -> str | None:
+    """Read the data-stream namespace, which is required only for data streams."""
+    namespace = values.get("DATA_STREAM_NAMESPACE", "").strip()
+    if destination_type == "data_stream" and not namespace:
+        raise ConfigurationError(
+            "DATA_STREAM_NAMESPACE must be configured for DESTINATION_TYPE=data_stream."
+        )
+    return namespace or None
+
+
 def _is_true(value: object) -> bool:
     """Accept JSON true and the historic string value \"true\"."""
     return value is True or (isinstance(value, str) and value.lower() == "true")
@@ -268,15 +312,13 @@ def _parse_ca_certs(values: Mapping[str, str], dotenv_path: Path | None) -> tupl
     return tuple(paths)
 
 
-def _parse_ilm_policy(
-    values: Mapping[str, str], destination_type: str
-) -> Mapping[str, Any] | None:
-    """Parse the required index lifecycle policy from its JSON configuration."""
+def _parse_ilm_policy(values: Mapping[str, str]) -> Mapping[str, Any] | None:
+    """Parse the required lifecycle policy from its JSON configuration."""
     raw_policy = values.get("ILM_POLICY", "").strip()
     if not raw_policy:
-        if destination_type == "index":
-            raise ConfigurationError("ILM_POLICY must be configured for DESTINATION_TYPE=index.")
-        return None
+        raise ConfigurationError(
+            "ILM_POLICY must be configured for every destination type."
+        )
     try:
         policy = json.loads(raw_policy)
     except json.JSONDecodeError as error:
@@ -307,10 +349,11 @@ def load_configuration(dotenv_path: str | Path | None = None) -> Configuration:
         kibana_port=kibana_port,
         destination_type=destination_type,
         destination_name=_parse_destination_name(values),
+        data_stream_namespace=_parse_data_stream_namespace(values, destination_type),
         flush_interval=_parse_positive_number(values, "FLUSH_INTERVAL"),
         random_words_count=_parse_positive_integer(values, "RANDOM_WORDS_COUNT"),
         log_entries=_parse_log_entries(values),
-        ilm_policy=_parse_ilm_policy(values, destination_type),
+        ilm_policy=_parse_ilm_policy(values),
     )
 
 

@@ -37,9 +37,9 @@ def _response_exists(response: object) -> bool:
 
 
 def ilm_policy(configuration: Configuration) -> dict[str, Any]:
-    """Return the configured rollover policy for an alias-backed index."""
+    """Return the configured policy used to manage the destination."""
     if configuration.ilm_policy is None:
-        raise ConfigurationError("ILM_POLICY is required for an index destination.")
+        raise ConfigurationError("ILM_POLICY is required for every destination type.")
     return dict(configuration.ilm_policy)
 
 
@@ -106,20 +106,31 @@ def prepare_index_destination(client: object, configuration: Configuration) -> N
 
 
 def prepare_data_stream_destination(client: object, configuration: Configuration) -> None:
-    """Create or update the data-stream template and create the data stream once."""
+    """Create an ILM-managed data stream and update it safely on repeated setup."""
     destination = configuration.destination_name
+    data_stream_name = configuration.write_destination
+    client.ilm.put_lifecycle(name=destination, policy=ilm_policy(configuration))
     client.indices.put_index_template(
         name=destination,
-        index_patterns=[destination],
+        index_patterns=[f"{destination}-*"],
+        priority=501,
         data_stream={},
-        template={"mappings": EVENT_MAPPINGS},
+        template={
+            "settings": {"index.lifecycle.name": destination},
+            "mappings": EVENT_MAPPINGS,
+        },
     )
-    if _response_exists(client.indices.exists(index=destination)):
-        LOGGER.info("Data stream %s already exists", destination)
-        return
+    if _response_exists(client.indices.exists(index=data_stream_name)):
+        LOGGER.info("Data stream %s already exists", data_stream_name)
+    else:
+        client.indices.create_data_stream(name=data_stream_name)
+        LOGGER.info("Created data stream destination %s", data_stream_name)
 
-    client.indices.create_data_stream(name=destination)
-    LOGGER.info("Created data stream destination %s", destination)
+    client.indices.put_data_stream_settings(
+        name=data_stream_name,
+        settings={"index.lifecycle.name": destination},
+    )
+    LOGGER.info("Applied ILM policy %s to data stream %s", destination, data_stream_name)
 
 
 def prepare_destination(client: object, configuration: Configuration) -> None:
@@ -137,7 +148,7 @@ def data_view_definition(
     destination = configuration.destination_name
     data_view = {
         "name": destination,
-        "title": destination,
+        "title": configuration.write_destination,
         "timeFieldName": "@timestamp",
     }
     if include_id:

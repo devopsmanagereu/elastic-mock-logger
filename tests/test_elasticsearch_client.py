@@ -18,6 +18,7 @@ def configuration(hosts: tuple[str, ...]) -> Configuration:
         kibana_port=5601,
         destination_type="data_stream",
         destination_name="logs-test",
+        data_stream_namespace="default",
         flush_interval=3,
         random_words_count=4,
         log_entries=(LogEntry("application", 60, "message", False),),

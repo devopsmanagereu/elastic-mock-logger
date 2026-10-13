@@ -80,6 +80,31 @@ def test_fixed_message_is_preserved_in_document():
     assert document["event"]["dataset"] == "audit"
 
 
+def test_data_stream_documents_include_the_configured_ecs_fields():
+    clock = Clock()
+    scheduler = EventScheduler(
+        [LogEntry("application", 60, "message", False)],
+        1,
+        monotonic=clock.monotonic,
+        now=clock.now,
+        random_choice=lambda _words: "unused",
+        data_stream={
+            "type": "logs",
+            "namespace": "default",
+            "dataset": "logs-test",
+        },
+    )
+
+    clock.seconds = 1
+    document = scheduler.generate_due_documents()[0]
+
+    assert document["data_stream"] == {
+        "type": "logs",
+        "namespace": "default",
+        "dataset": "logs-test",
+    }
+
+
 class BulkClient:
     def __init__(self, response):
         self.response = response

@@ -21,6 +21,8 @@ KIBANA_PORT=5601
 
 DESTINATION_TYPE=index
 DESTINATION_NAME=logs-random
+# Required only when DESTINATION_TYPE=data_stream.
+# DATA_STREAM_NAMESPACE=default
 FLUSH_INTERVAL=3
 RANDOM_WORDS_COUNT=8
 
@@ -59,19 +61,30 @@ Kibana's Basic authentication.
 `DESTINATION_TYPE=index` creates (or updates) an ILM policy and composable
 index template named after `DESTINATION_NAME`. Its first index is
 `<DESTINATION_NAME>-000001`, with `DESTINATION_NAME` as its write-index alias.
-`ILM_POLICY` is required for an index destination and contains the exact ILM
+`ILM_POLICY` is required for every destination type and contains the exact ILM
 policy sent to Elasticsearch. It can be either the policy object itself or a
 full Elasticsearch ILM request body containing a top-level `policy` object.
 
-`DESTINATION_TYPE=data_stream` creates a matching composable index template
-and the data stream itself. In both modes, events use the `create` bulk action,
-which is valid for data streams and aliases that have a write index.
+`DESTINATION_TYPE=data_stream` requires `DATA_STREAM_NAMESPACE`. It creates a
+composable index template with the index pattern `<DESTINATION_NAME>-*` and a
+priority of 501, then creates the data stream
+`<DESTINATION_NAME>-<DATA_STREAM_NAMESPACE>`. The higher priority makes the
+template take precedence over Elastic's built-in `logs-*-*` template. Do not
+use this priority when Fleet or Elastic Agent manages overlapping templates.
+The configured ILM policy is created or updated with the name
+`DESTINATION_NAME`, added to the template as `index.lifecycle.name`, and set on
+the data stream so it also applies to its current backing indices.
+Every event sent to the stream contains `data_stream.type: logs`,
+`data_stream.dataset: <DESTINATION_NAME>`, and
+`data_stream.namespace: <DATA_STREAM_NAMESPACE>`. In both modes, events use
+the `create` bulk action, which is valid for data streams and aliases that have
+a write index.
 
 Setup can be safely repeated: the policy and template are updated from the
 configuration, while an existing initial index or data stream is not recreated.
 It also creates or updates a Kibana data view named `DESTINATION_NAME`, whose
-data view title is `DESTINATION_NAME`: the index alias for an index destination,
-or the data stream name for a data-stream destination.
+data view title is the index alias for an index destination or the
+namespace-qualified stream name for a data-stream destination.
 
 For an index destination, setup also checks every index currently assigned to
 the `DESTINATION_NAME` alias. If one is marked as `is_write_index`, it creates
